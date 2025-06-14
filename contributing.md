@@ -2,76 +2,43 @@
 
 This section is very much a work in progress.
 
-## Getting a Trace via Android Emulator
+# Tests
+There are three buckets of tests, please feel free to add as appropriate.
+* [PyDreo Unit Tests](tests/pydreo/README.md)
+    * These tests ensure that the PyDreo library can parse the JSONs correctly for each device we support.
+* [Dreo Unit Tests](tests/dreo/README.md) - That do not talk to PyDreo
+    * These tests ensure that the Dreo HA code correctly talks to PyDreo.  For these we mock PyDreo.
+* [Dreo Integration Tests](tests/dreo/integrationtests/README.md) - That do talk to PyDreo
+    * These integration tests ensure that the Dreo HA code gets what we expect from the device JSON files.
 
-There are a few steps you need to follow to get this all to work...
+# Debug Test Mode
+There is a special mode you can put the integration in that will allow you to pretend you have any device. Please note that enabling this will do the following:
+* Temporarily disconnect your integration from the Dreo servers.
+* All data will come from JSON files on disk.
+* Unit-tests will fail to prevent accidental merge.
 
-### Emulator Setup
+## Enabling
+In [custom_components/dreo/const.py](custom_components/dreo/const.py), uncomment the line:
+```
+# DEBUG_TEST_MODE = True
+```
 
-1. Create an emulator using a non-Google Play Store version
-1. Download a Dreo app APK from any of the various Google Play Store downloaders
+## Configuration
+In [custom_components/dreo/e2e_test_data](custom_components/dreo/e2e_test_data), you'll find 2 types of files containing content as they would be returned from the Dreo server.
 
-### Frida to Defeat Certificate Pinning - Part 1
-The Dreo app uses certificate pinning. You can use *Frida* to get around that.  Full instructions are here: https://httptoolkit.com/blog/frida-certificate-pinning. The following are the steps I followed:
-. Download and extract the Frida Android Server from here:  https://github.com/frida/frida/releases.
-1. Windows can extract the `.xz` archive format.
-1. Copy the binary and start Frida on your device as follows:
-    ```bat
-    # Copy the server to the device
-    adb push ./frida-server-$version-android-$arch /data/local/tmp/frida-server
-    #        ^Change this to match the name of the binary you just extracted
-    
-    # Enable root access to the device
-    adb root
-    
-    # Make the server binary executable
-    adb shell "chmod 755 /data/local/tmp/frida-server"
-    
-    # Start the server on your device
-    adb shell "/data/local/tmp/frida-server &"
-    ```
-1. Install Frida on your PC using Python
-    ```bat
-    pip install frida-tools
-    ```
+1. [custom_components/dreo/e2e_test_data/get_devices.json](get_devices.json) which contains a JSON blob containing a list of all devices. You can add/change anything in here, just make sure to update the device count at the top. For each device, you'll need a state file - see next point.
+1. Device state files, named as SERIALNUMBER.json. You'll need one of these for each device.
 
-1. You can test this by running `frida-ps -U`. This will connect to the server via USB (-U) and list the details over every running process on the target device. If this shows you a list of processes, you're set
+Make sure you have Debug logging enabled as well so you can confirm your files are loading correctly.
+
+Simply edit the necessary files, and copy them over to your HA server and you're good to go.
+
+## Status Updates
+TODO
+
+## Getting Network Traces from Dreo App
+As of a recent release, Dreo seems to have removed certificate pinning, at least for iOS. That makes all this a bunch easier.
 
 ### Setup Fiddler Classic as a Proxy
 1. Use Fiddler Classic (http://www.fiddlertool.com) to get a network trace to see what the Dreo app is doing. I won't document here how to setup Fiddler as a proxy or do SSL decryption; Fiddler documentation is pretty good.
-1. Create a Fiddler rule where this line is added to `OnBeforeRequest`
-
-    ```
-    oSession.oRequest["ua"] = "dreo/2.5.12 (sdk_gphone64_arm64;android 13;Scale/2.625)";
-    ```
-1. Get the Fiddler root CA from the Fiddler Options and use certutil.exe to get the PEM version.  You'll need it later.
-   
-    ```
-    certutil -encode c:\in.cer c:\out.pem
-    ```
-           
-### Frida to Defeat Certificate Pinning - Part 2
-1. Clone the following repo which contains a bunch of handy scripts: https://github.com/httptoolkit/frida-interception-and-unpinning
-1. Navigate to that cloned repo
-1. Modify `config.js` appropriately. Note you'll need the base 64 cert from Fiddler. My file looks something like this...
-
-   ```js
-        // Put your CA certificate data here in PEM format:
-        const CERT_PEM = `-----BEGIN CERTIFICATE-----
-        MIIDozCCAougAwIabcxyzabcxyzabcxyzabcxayzaa
-        abcxyzabcxyzabcxyzabcxyzabcxyzabcxyzabcxyz
-        abcxyzabcxyzabcxyzabcxyzabcxyzabcxyzabcxyz
-        abcxyzabcxyzabcxyzabcxyzabcxyzabcxyzxpOyo=
-        -----END CERTIFICATE-----`;
-        
-        // Put your intercepting proxy's address here:
-        const PROXY_HOST = '192.168.xx.yy';
-        const PROXY_PORT = 8888;
-   ```
-   
-1. Start Frida on your PC.  This will cause the app on the emulator to restart with correct settings.
-
-    ```
-    frida -U -l ./config.js -l ./native-connect-hook.js -l ./android/android-proxy-override.js -l ./android/android-system-certificate-injection.js  -l ./android/android-certificate-unpinning.js -l ./android/android-certificate-unpinning-fallback.js -f com.hesung.dreo
-    ```
 
